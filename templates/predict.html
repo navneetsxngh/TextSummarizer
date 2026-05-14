@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Summarizer — AI Text Summarizer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <style>
+    .output-fade { animation: fadeInUp 0.55s cubic-bezier(0.16,1,0.3,1) forwards; }
+    @keyframes fadeInUp {
+      from { opacity:0; transform:translateY(16px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .panel-label {
+      font-size:0.7rem; font-weight:700; letter-spacing:0.1em;
+      text-transform:uppercase; color:#475569;
+    }
+    #input-text:focus { outline: none; }
+  </style>
+</head>
+<body>
+
+<!-- ── Background ─────────────────────────────────── -->
+<div class="bg-blobs" aria-hidden="true">
+  <div class="blob blob-purple" style="opacity:0.2;top:-15%;left:-8%"></div>
+  <div class="blob blob-blue"   style="opacity:0.18;top:30%;right:-8%"></div>
+  <div class="blob blob-cyan"   style="opacity:0.14;bottom:-15%;left:25%"></div>
+</div>
+<div class="grid-overlay" aria-hidden="true"></div>
+
+<!-- ── Navbar ─────────────────────────────────────── -->
+<nav class="navbar content">
+  <div class="max-w-7xl mx-auto flex items-center justify-between">
+    <a href="/" class="nav-logo">
+      <div class="logo-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <span class="font-bold text-white text-sm tracking-tight hidden sm:block">AI Text Summarizer</span>
+    </a>
+
+    <div class="hidden md:flex items-center gap-1">
+      <a href="/"        class="nav-link">Home</a>
+      <a href="/predict" class="nav-link active">Summarize</a>
+      <a href="/train"   class="nav-link">Train</a>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <a href="/train" class="btn-secondary hidden sm:inline-flex py-2 px-5 text-sm">
+        Train Model
+      </a>
+      <button id="menu-toggle" class="md:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition" aria-label="Menu" aria-expanded="false">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
+  <div id="mobile-menu" class="mobile-menu md:hidden">
+    <a href="/"        class="mobile-nav-link">Home</a>
+    <a href="/predict" class="mobile-nav-link">Summarize</a>
+    <a href="/train"   class="mobile-nav-link">Train Model</a>
+  </div>
+</nav>
+
+<!-- ── Main ───────────────────────────────────────── -->
+<main class="content pt-28 pb-16 px-4 min-h-screen">
+  <div class="max-w-7xl mx-auto">
+
+    <!-- Page header -->
+    <div class="text-center mb-10 anim-target" data-anim="anim-fade-up">
+      <div class="badge mx-auto mb-4">
+        <span class="badge-dot"></span>
+        AI-Powered Summarization
+      </div>
+      <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mb-3">
+        <span class="gradient-text">Summarize</span>
+        <span class="text-white"> Anything</span>
+      </h1>
+      <p class="text-slate-500 text-base max-w-md mx-auto leading-relaxed">
+        Paste your article, research paper, or blog post and get a concise AI-generated summary instantly.
+      </p>
+    </div>
+
+    <!-- Split Layout -->
+    <div class="grid md:grid-cols-2 gap-5 anim-target" data-anim="anim-fade-up" data-delay="0.15">
+
+      <!-- ── Left Panel: Input ────────────────────── -->
+      <div class="split-panel gradient-border">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <div style="width:1.75rem;height:1.75rem;border-radius:0.5rem;background:rgba(139,92,246,0.15);display:flex;align-items:center;justify-content:center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            </div>
+            <span class="panel-label">Input Text</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="char-count" class="text-xs text-slate-600 font-mono">0 chars</span>
+            <button onclick="pasteFromClipboard()" class="btn-icon py-1 px-2.5" title="Paste from clipboard">
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+              Paste
+            </button>
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div class="h-px bg-white/5 mb-4"></div>
+
+        <!-- Textarea -->
+        <textarea
+          id="input-text"
+          class="ai-textarea flex-1 min-h-[300px]"
+          placeholder="Paste your article, blog post, research paper, or any text content here…&#10;&#10;Tip: Longer texts produce more detailed summaries."
+          oninput="updateCharCount(this)"
+          spellcheck="false"
+        ></textarea>
+
+        <!-- Divider -->
+        <div class="h-px bg-white/5 mt-4 mb-4"></div>
+
+        <!-- Footer actions -->
+        <div class="flex items-center gap-3 flex-wrap">
+          <button id="summarize-btn" onclick="runSummarize()" class="btn-primary flex-1 sm:flex-none py-2.5 px-5 text-sm">
+            <svg id="btn-icon-default" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <div id="btn-spinner" class="hidden">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="spin-anim"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+            </div>
+            <span id="btn-text">Summarize</span>
+          </button>
+
+          <button onclick="clearAll()" class="btn-icon py-2.5 px-4 text-sm" id="clear-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>
+            Clear
+          </button>
+
+          <span id="word-count" class="text-slate-600 text-xs ml-auto font-mono hidden">0 words</span>
+        </div>
+      </div>
+
+      <!-- ── Right Panel: Output ──────────────────── -->
+      <div class="split-panel gradient-border">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <div style="width:1.75rem;height:1.75rem;border-radius:0.5rem;background:rgba(34,211,238,0.12);display:flex;align-items:center;justify-content:center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            </div>
+            <span class="panel-label">AI Summary</span>
+          </div>
+          <!-- Output action buttons (hidden until summary ready) -->
+          <div id="output-actions" class="flex items-center gap-1.5 hidden">
+            <button id="copy-btn" onclick="copySummary()" class="btn-icon py-1 px-2.5 text-xs">
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              Copy
+            </button>
+            <button onclick="downloadSummary()" class="btn-icon py-1 px-2.5 text-xs">
+              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Download
+            </button>
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div class="h-px bg-white/5 mb-4"></div>
+
+        <!-- ── States ── -->
+
+        <!-- Empty state -->
+        <div id="empty-state" class="flex-1 flex flex-col items-center justify-center text-center py-10">
+          <div class="relative mb-5">
+            <div style="width:5rem;height:5rem;border-radius:50%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1e293b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            </div>
+            <!-- Small spark -->
+            <div style="position:absolute;top:-4px;right:-4px;width:1.5rem;height:1.5rem;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#06b6d4);display:flex;align-items:center;justify-content:center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            </div>
+          </div>
+          <p class="text-slate-500 font-medium text-sm mb-1">Your summary will appear here</p>
+          <p class="text-slate-700 text-xs">Enter text on the left and click <span class="text-slate-500 font-medium">Summarize</span></p>
+        </div>
+
+        <!-- Loading state -->
+        <div id="loading-state" class="hidden flex-1 flex flex-col items-center justify-center text-center py-10">
+          <div class="relative w-16 h-16 mb-5">
+            <div class="absolute inset-0 rounded-full border-2 border-transparent spin-anim" style="border-top-color:#7c3aed"></div>
+            <div class="absolute inset-2 rounded-full border-2 border-transparent spin-anim-rev" style="border-top-color:#2563eb;animation-duration:0.75s"></div>
+            <div class="absolute inset-4 rounded-full border border-transparent spin-anim-slow" style="border-top-color:#06b6d4"></div>
+          </div>
+          <p class="text-slate-300 font-semibold text-sm mb-1">Generating summary…</p>
+          <p class="text-slate-600 text-xs">AI is processing your text</p>
+          <!-- Shimmer placeholder -->
+          <div class="w-full mt-6 space-y-2 px-4">
+            <div class="h-2.5 rounded-full bg-white/4" style="animation:shimmer 1.8s linear infinite;background:linear-gradient(90deg,rgba(255,255,255,0.03) 0%,rgba(255,255,255,0.08) 50%,rgba(255,255,255,0.03) 100%);background-size:200% auto"></div>
+            <div class="h-2.5 rounded-full bg-white/4" style="width:85%;animation:shimmer 1.8s linear infinite 0.2s;background:linear-gradient(90deg,rgba(255,255,255,0.03) 0%,rgba(255,255,255,0.08) 50%,rgba(255,255,255,0.03) 100%);background-size:200% auto"></div>
+            <div class="h-2.5 rounded-full bg-white/4" style="width:70%;animation:shimmer 1.8s linear infinite 0.4s;background:linear-gradient(90deg,rgba(255,255,255,0.03) 0%,rgba(255,255,255,0.08) 50%,rgba(255,255,255,0.03) 100%);background-size:200% auto"></div>
+          </div>
+        </div>
+
+        <!-- Error state -->
+        <div id="error-state" class="hidden flex-1 flex flex-col items-center justify-center text-center py-10">
+          <div style="width:4rem;height:4rem;border-radius:50%;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);display:flex;align-items:center;justify-content:center;margin-bottom:1rem">
+            <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          </div>
+          <p class="text-red-400 font-semibold text-sm mb-1">Summarization Failed</p>
+          <p id="error-detail" class="text-slate-600 text-xs max-w-xs">An unexpected error occurred. Please try again.</p>
+          <button onclick="clearAll()" class="btn-secondary mt-4 py-1.5 px-4 text-xs">Try Again</button>
+        </div>
+
+        <!-- Output text -->
+        <div id="output-state" class="hidden flex-1 flex flex-col">
+          <!-- Summary metrics -->
+          <div id="summary-meta" class="flex gap-4 mb-4">
+            <div class="text-xs text-slate-600">
+              <span class="text-slate-400 font-medium" id="summary-word-count">—</span> words
+            </div>
+            <div class="text-xs text-slate-600">
+              <span class="text-slate-400 font-medium" id="compression-ratio">—</span> compression
+            </div>
+          </div>
+
+          <!-- Summary text -->
+          <div class="flex-1 overflow-y-auto">
+            <p id="summary-text" class="text-slate-200 text-sm leading-[1.85] output-fade"></p>
+          </div>
+
+          <!-- Bottom gradient fade -->
+          <div class="h-px bg-white/5 mt-4 mb-4"></div>
+          <div class="flex items-center justify-between">
+            <p class="text-slate-700 text-xs">AI-generated summary</p>
+            <div class="flex gap-2">
+              <button onclick="copySummary()" class="btn-icon py-1.5 px-3 text-xs">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                Copy
+              </button>
+              <button onclick="downloadSummary()" class="btn-icon py-1.5 px-3 text-xs">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Download
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tips Row -->
+    <div class="mt-6 grid sm:grid-cols-3 gap-3 anim-target" data-anim="anim-fade-up" data-delay="0.3">
+      <div class="glass-card p-4 flex items-start gap-3">
+        <div style="width:1.75rem;height:1.75rem;border-radius:0.5rem;background:rgba(139,92,246,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:0.1rem">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        </div>
+        <div>
+          <p class="text-white text-xs font-semibold mb-0.5">Best Results</p>
+          <p class="text-slate-600 text-xs leading-relaxed">Use 100–1000 word texts for optimal summaries.</p>
+        </div>
+      </div>
+      <div class="glass-card p-4 flex items-start gap-3">
+        <div style="width:1.75rem;height:1.75rem;border-radius:0.5rem;background:rgba(59,130,246,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:0.1rem">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+        </div>
+        <div>
+          <p class="text-white text-xs font-semibold mb-0.5">Abstractive AI</p>
+          <p class="text-slate-600 text-xs leading-relaxed">Model generates new sentences, not just extraction.</p>
+        </div>
+      </div>
+      <div class="glass-card p-4 flex items-start gap-3">
+        <div style="width:1.75rem;height:1.75rem;border-radius:0.5rem;background:rgba(6,182,212,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:0.1rem">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        </div>
+        <div>
+          <p class="text-white text-xs font-semibold mb-0.5">Custom Model</p>
+          <p class="text-slate-600 text-xs leading-relaxed">Use the Train page to fine-tune on your dataset.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ── Toast container ────────────────────────────── -->
+<div id="toast-container"></div>
+
+<!-- ── Scripts ────────────────────────────────────── -->
+<script src="/static/js/app.js"></script>
+<script>
+  const inputEl      = document.getElementById('input-text');
+  const charCountEl  = document.getElementById('char-count');
+  const wordCountEl  = document.getElementById('word-count');
+  const btnText      = document.getElementById('btn-text');
+  const btnIconDef   = document.getElementById('btn-icon-default');
+  const btnSpinner   = document.getElementById('btn-spinner');
+  const summarizeBtn = document.getElementById('summarize-btn');
+
+  const emptyState   = document.getElementById('empty-state');
+  const loadingState = document.getElementById('loading-state');
+  const errorState   = document.getElementById('error-state');
+  const outputState  = document.getElementById('output-state');
+  const outputActions= document.getElementById('output-actions');
+  const summaryText  = document.getElementById('summary-text');
+  const errorDetail  = document.getElementById('error-detail');
+
+  let currentSummary = '';
+
+  function updateCharCount(el) {
+    const len   = el.value.length;
+    const words = el.value.trim() ? el.value.trim().split(/\s+/).length : 0;
+    charCountEl.textContent = `${len.toLocaleString()} chars`;
+    wordCountEl.textContent = `${words.toLocaleString()} words`;
+    wordCountEl.classList.toggle('hidden', !el.value.trim());
+  }
+
+  function showState(state) {
+    [emptyState, loadingState, errorState, outputState].forEach(el => el.classList.add('hidden'));
+    if (state === 'empty')   { emptyState.classList.remove('hidden');   outputActions.classList.add('hidden'); }
+    if (state === 'loading') { loadingState.classList.remove('hidden'); outputActions.classList.add('hidden'); }
+    if (state === 'error')   { errorState.classList.remove('hidden');   outputActions.classList.add('hidden'); }
+    if (state === 'output')  { outputState.classList.remove('hidden');  outputActions.classList.remove('hidden'); }
+  }
+
+  async function runSummarize() {
+    const text = inputEl.value.trim();
+    if (!text) {
+      Toast.error('Please enter some text to summarize.');
+      inputEl.focus();
+      return;
+    }
+    if (text.length < 30) {
+      Toast.error('Text is too short. Please provide at least 30 characters.');
+      return;
+    }
+
+    // Loading state
+    summarizeBtn.disabled = true;
+    btnText.textContent   = 'Summarizing…';
+    btnIconDef.classList.add('hidden');
+    btnSpinner.classList.remove('hidden');
+    showState('loading');
+
+    try {
+      const res  = await fetch('/predict', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text }),
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        throw new Error(data.error || `Server error ${res.status}`);
+      }
+
+      currentSummary = data.summary;
+
+      // Compute metrics
+      const inputWords   = text.trim().split(/\s+/).length;
+      const summaryWords = currentSummary.trim().split(/\s+/).length;
+      const ratio        = inputWords > 0 ? Math.round((1 - summaryWords / inputWords) * 100) : 0;
+
+      document.getElementById('summary-word-count').textContent = summaryWords.toLocaleString();
+      document.getElementById('compression-ratio').textContent  = `${ratio}%`;
+
+      summaryText.textContent = currentSummary;
+      showState('output');
+      Toast.success('Summary generated!');
+
+    } catch (err) {
+      errorDetail.textContent = err.message || 'An unexpected error occurred.';
+      showState('error');
+      Toast.error('Summarization failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      summarizeBtn.disabled = false;
+      btnText.textContent   = 'Summarize';
+      btnIconDef.classList.remove('hidden');
+      btnSpinner.classList.add('hidden');
+    }
+  }
+
+  function clearAll() {
+    inputEl.value = '';
+    updateCharCount(inputEl);
+    currentSummary = '';
+    showState('empty');
+    inputEl.focus();
+  }
+
+  function copySummary() {
+    if (!currentSummary) return;
+    const btn = document.getElementById('copy-btn');
+    copyToClipboard(currentSummary, btn);
+  }
+
+  function downloadSummary() {
+    if (!currentSummary) return;
+    downloadText(currentSummary, 'ai_summary.txt');
+  }
+
+  async function pasteFromClipboard() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        inputEl.value = text;
+        updateCharCount(inputEl);
+        Toast.info('Text pasted from clipboard.');
+        inputEl.focus();
+      }
+    } catch {
+      Toast.error('Cannot access clipboard. Please paste manually (Ctrl+V).');
+    }
+  }
+
+  // Keyboard shortcut: Ctrl+Enter to summarize
+  inputEl.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      runSummarize();
+    }
+  });
+
+  // Shimmer keyframe
+  const style = document.createElement('style');
+  style.textContent = `@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }`;
+  document.head.appendChild(style);
+</script>
+</body>
+</html>

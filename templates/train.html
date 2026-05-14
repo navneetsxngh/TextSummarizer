@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Model Training — AI Text Summarizer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+<!-- ── Background ─────────────────────────────────── -->
+<div class="bg-blobs" aria-hidden="true">
+  <div class="blob blob-purple" style="opacity:0.2;top:-10%;left:-5%"></div>
+  <div class="blob blob-blue"   style="opacity:0.15;top:40%;right:-5%"></div>
+  <div class="blob blob-cyan"   style="opacity:0.12;bottom:-10%;left:20%"></div>
+</div>
+<div class="grid-overlay" aria-hidden="true"></div>
+
+<!-- ── Navbar ─────────────────────────────────────── -->
+<nav class="navbar content">
+  <div class="max-w-7xl mx-auto flex items-center justify-between">
+    <a href="/" class="nav-logo">
+      <div class="logo-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <span class="font-bold text-white text-sm tracking-tight hidden sm:block">AI Text Summarizer</span>
+    </a>
+
+    <div class="hidden md:flex items-center gap-1">
+      <a href="/"        class="nav-link">Home</a>
+      <a href="/predict" class="nav-link">Summarize</a>
+      <a href="/train"   class="nav-link active">Train</a>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <a href="/predict" class="btn-primary hidden sm:inline-flex py-2 px-5 text-sm">
+        Summarize
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+      <button id="menu-toggle" class="md:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition" aria-label="Menu" aria-expanded="false">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
+  <div id="mobile-menu" class="mobile-menu md:hidden">
+    <a href="/"        class="mobile-nav-link">Home</a>
+    <a href="/predict" class="mobile-nav-link">Summarize</a>
+    <a href="/train"   class="mobile-nav-link">Train Model</a>
+  </div>
+</nav>
+
+<!-- ── Main ───────────────────────────────────────── -->
+<main class="content pt-28 pb-16 px-4 min-h-screen">
+  <div class="max-w-4xl mx-auto">
+
+    <!-- Page header -->
+    <div class="mb-10 anim-target" data-anim="anim-fade-up">
+      <div class="flex items-center gap-3 mb-2">
+        <div style="width:2.5rem;height:2.5rem;border-radius:0.875rem;background:linear-gradient(135deg,#7c3aed,#2563eb);display:flex;align-items:center;justify-content:center">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
+        </div>
+        <h1 class="text-3xl font-bold text-white">Model Training</h1>
+      </div>
+      <p class="text-slate-500 text-sm pl-[3.25rem]">Run the full training pipeline: data ingestion → transformation → training → evaluation.</p>
+    </div>
+
+    <!-- Status Overview -->
+    <div class="grid sm:grid-cols-3 gap-4 mb-6">
+      <!-- Status -->
+      <div class="glass-strong p-5 flex items-center gap-4 anim-target" data-anim="anim-fade-up" data-delay="0">
+        <div id="status-dot" class="status-dot status-idle"></div>
+        <div>
+          <p class="text-xs text-slate-500 font-medium uppercase tracking-wider mb-0.5">Status</p>
+          <p id="status-text" class="text-white font-semibold text-sm">Idle</p>
+        </div>
+      </div>
+
+      <!-- Stage -->
+      <div class="glass-strong p-5 flex items-center gap-4 anim-target" data-anim="anim-fade-up" data-delay="0.1">
+        <div style="width:10px;height:10px;border-radius:50%;background:#475569;flex-shrink:0" id="stage-indicator"></div>
+        <div>
+          <p class="text-xs text-slate-500 font-medium uppercase tracking-wider mb-0.5">Stage</p>
+          <p id="stage-text" class="text-white font-semibold text-sm">—</p>
+        </div>
+      </div>
+
+      <!-- Duration -->
+      <div class="glass-strong p-5 flex items-center gap-4 anim-target" data-anim="anim-fade-up" data-delay="0.2">
+        <div style="width:10px;height:10px;border-radius:50%;background:#475569;flex-shrink:0"></div>
+        <div>
+          <p class="text-xs text-slate-500 font-medium uppercase tracking-wider mb-0.5">Duration</p>
+          <p id="duration-text" class="text-white font-semibold text-sm font-mono">—</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Training Control Card -->
+    <div class="glass gradient-border p-8 mb-6 anim-target" data-anim="anim-fade-up" data-delay="0.1">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+
+        <!-- Left: description -->
+        <div class="flex-1">
+          <h2 class="text-xl font-bold text-white mb-1">Training Pipeline</h2>
+          <p class="text-slate-500 text-sm leading-relaxed max-w-md">
+            Runs all four stages sequentially: data ingestion, tokenization &amp; transformation, model fine-tuning, and ROUGE evaluation.
+          </p>
+
+          <!-- Pipeline stages visualization -->
+          <div class="flex items-center gap-2 mt-5 flex-wrap">
+            <div id="stage-ingest"     class="stage-pill px-3 py-1 rounded-full text-xs font-medium bg-white/5 border border-white/8 text-slate-500 transition-all duration-500">Ingestion</div>
+            <svg class="text-slate-700 flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <div id="stage-transform"  class="stage-pill px-3 py-1 rounded-full text-xs font-medium bg-white/5 border border-white/8 text-slate-500 transition-all duration-500">Transform</div>
+            <svg class="text-slate-700 flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <div id="stage-train-pill" class="stage-pill px-3 py-1 rounded-full text-xs font-medium bg-white/5 border border-white/8 text-slate-500 transition-all duration-500">Training</div>
+            <svg class="text-slate-700 flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <div id="stage-eval"       class="stage-pill px-3 py-1 rounded-full text-xs font-medium bg-white/5 border border-white/8 text-slate-500 transition-all duration-500">Evaluation</div>
+          </div>
+        </div>
+
+        <!-- Right: action -->
+        <div class="flex flex-col items-start sm:items-end gap-3">
+          <button id="start-btn" onclick="startTraining()" class="btn-primary text-base px-7 py-3">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            <span id="start-btn-text">Start Training</span>
+          </button>
+          <button id="reset-btn" onclick="resetTraining()" class="btn-icon hidden text-xs">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 .49-3.3"></path></svg>
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <!-- Progress bar (shown when running) -->
+      <div id="progress-section" class="mt-7 hidden">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs font-medium text-slate-500">Progress</span>
+          <span id="progress-label" class="text-xs font-medium text-slate-400">Running...</span>
+        </div>
+        <div class="progress-track">
+          <div id="progress-bar" class="progress-bar" style="width:0%"></div>
+        </div>
+
+        <!-- Animated dots visualization -->
+        <div class="flex items-center justify-center gap-3 mt-6">
+          <div class="flex items-center gap-1.5">
+            <div id="spinner-outer" class="relative w-10 h-10">
+              <div class="absolute inset-0 rounded-full border-2 border-transparent" style="border-top-color:#7c3aed" id="spin-outer"></div>
+              <div class="absolute inset-1.5 rounded-full border-2 border-transparent" style="border-top-color:#2563eb" id="spin-inner"></div>
+              <div class="absolute inset-3 rounded-full border border-transparent" style="border-top-color:#06b6d4" id="spin-center"></div>
+            </div>
+          </div>
+          <div>
+            <p class="text-white text-sm font-semibold" id="training-label">Processing...</p>
+            <p class="text-slate-600 text-xs" id="training-sublabel">Please keep this tab open</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Success state -->
+      <div id="success-section" class="mt-7 hidden">
+        <div class="flex items-center gap-4 p-5 rounded-2xl" style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2)">
+          <div style="width:3rem;height:3rem;border-radius:50%;background:rgba(34,197,94,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline class="check-path" points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+          <div>
+            <p class="text-green-400 font-semibold text-sm">Training Completed Successfully!</p>
+            <p class="text-slate-500 text-xs mt-0.5">Your model is ready. Head to the Summarize page to try it out.</p>
+          </div>
+          <a href="/predict" class="btn-primary ml-auto py-2 px-4 text-sm flex-shrink-0">
+            Try Now →
+          </a>
+        </div>
+      </div>
+
+      <!-- Error state -->
+      <div id="error-section" class="mt-7 hidden">
+        <div class="flex items-start gap-4 p-5 rounded-2xl" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2)">
+          <div style="width:3rem;height:3rem;border-radius:50%;background:rgba(239,68,68,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-red-400 font-semibold text-sm">Training Failed</p>
+            <p id="error-message" class="text-slate-500 text-xs mt-0.5 break-all">—</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Console Logs Card -->
+    <div class="glass gradient-border overflow-hidden anim-target" data-anim="anim-fade-up" data-delay="0.2">
+      <div class="flex items-center justify-between px-6 py-4 border-b border-white/5">
+        <div class="flex items-center gap-3">
+          <!-- Traffic lights -->
+          <div class="flex gap-1.5">
+            <div class="w-3 h-3 rounded-full" style="background:#ff5f57"></div>
+            <div class="w-3 h-3 rounded-full" style="background:#ffbd2e"></div>
+            <div class="w-3 h-3 rounded-full" style="background:#28c940"></div>
+          </div>
+          <span class="text-slate-400 text-xs font-mono">training_output.log</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div id="live-badge" class="hidden flex items-center gap-1.5 text-xs text-green-400 font-medium">
+            <div class="w-1.5 h-1.5 rounded-full bg-green-400" style="animation:pulse-dot 1s ease-in-out infinite"></div>
+            LIVE
+          </div>
+          <button onclick="clearConsole()" class="btn-icon py-1 px-2 text-xs">Clear</button>
+        </div>
+      </div>
+
+      <div id="console-wrap" class="p-5 h-72 overflow-y-auto" style="background:rgba(0,0,0,0.35)">
+        <div id="console-output" class="console-output">
+          <span class="log-default">▸ Awaiting training start...</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- ── Toast container ────────────────────────────── -->
+<div id="toast-container"></div>
+
+<!-- ── Scripts ────────────────────────────────────── -->
+<script src="/static/js/app.js"></script>
+<script>
+  let pollInterval  = null;
+  let startTime     = null;
+  let durationTimer = null;
+  let logIndex      = 0;
+
+  const statusDot    = document.getElementById('status-dot');
+  const statusText   = document.getElementById('status-text');
+  const stageText    = document.getElementById('stage-text');
+  const durationText = document.getElementById('duration-text');
+  const startBtn     = document.getElementById('start-btn');
+  const startBtnTxt  = document.getElementById('start-btn-text');
+  const resetBtn     = document.getElementById('reset-btn');
+  const progressSec  = document.getElementById('progress-section');
+  const progressBar  = document.getElementById('progress-bar');
+  const progressLbl  = document.getElementById('progress-label');
+  const successSec   = document.getElementById('success-section');
+  const errorSec     = document.getElementById('error-section');
+  const errorMsg     = document.getElementById('error-message');
+  const liveBadge    = document.getElementById('live-badge');
+  const consoleOut   = document.getElementById('console-output');
+  const consoleWrap  = document.getElementById('console-wrap');
+  const spinOuter    = document.getElementById('spin-outer');
+  const spinInner    = document.getElementById('spin-inner');
+  const spinCenter   = document.getElementById('spin-center');
+
+  const stagePills = {
+    ingest:    document.getElementById('stage-ingest'),
+    transform: document.getElementById('stage-transform'),
+    train:     document.getElementById('stage-train-pill'),
+    eval:      document.getElementById('stage-eval'),
+  };
+
+  function setStage(keyword) {
+    Object.values(stagePills).forEach(p => {
+      p.classList.remove('text-purple-300', 'border-purple-500/40', 'bg-purple-500/10',
+                         'text-green-300',  'border-green-500/40',  'bg-green-500/10');
+      p.classList.add('text-slate-500', 'bg-white/5', 'border-white/8');
+    });
+
+    const kw = keyword.toLowerCase();
+    let active = null;
+    if (kw.includes('ingest'))      active = stagePills.ingest;
+    else if (kw.includes('transform')) active = stagePills.transform;
+    else if (kw.includes('train'))     active = stagePills.train;
+    else if (kw.includes('eval'))      active = stagePills.eval;
+
+    if (active) {
+      active.classList.remove('text-slate-500', 'bg-white/5', 'border-white/8');
+      active.classList.add('text-purple-300', 'border-purple-500/40', 'bg-purple-500/10');
+    }
+  }
+
+  function startDurationTimer() {
+    startTime = Date.now();
+    durationTimer = setInterval(() => {
+      const secs = Math.floor((Date.now() - startTime) / 1000);
+      const m = String(Math.floor(secs / 60)).padStart(2, '0');
+      const s = String(secs % 60).padStart(2, '0');
+      durationText.textContent = `${m}:${s}`;
+    }, 1000);
+  }
+
+  function stopDurationTimer() {
+    clearInterval(durationTimer);
+  }
+
+  function appendLog(text) {
+    const line = document.createElement('div');
+    let cls = 'log-default';
+    if (text.startsWith('[INFO]') || text.toLowerCase().includes('info'))    cls = 'log-info';
+    if (text.startsWith('[SUCCESS]') || text.toLowerCase().includes('complet')) cls = 'log-success';
+    if (text.startsWith('[ERROR]') || text.toLowerCase().includes('error'))  cls = 'log-error';
+    if (text.toLowerCase().includes('warn'))                                 cls = 'log-warn';
+
+    line.className = `console-output ${cls}`;
+    line.textContent = text;
+    consoleOut.appendChild(line);
+    consoleWrap.scrollTop = consoleWrap.scrollHeight;
+  }
+
+  function clearConsole() {
+    consoleOut.innerHTML = '<span class="log-default">▸ Console cleared.</span>';
+    logIndex = 0;
+  }
+
+  function enableSpinner(on) {
+    const anim = 'spin-anim';
+    const animSlow = 'spin-anim-slow';
+    const animRev  = 'spin-anim-rev';
+    if (on) {
+      spinOuter.classList.add(anim);
+      spinInner.classList.add(animRev);
+      spinCenter.classList.add(animSlow);
+    } else {
+      spinOuter.classList.remove(anim);
+      spinInner.classList.remove(animRev);
+      spinCenter.classList.remove(animSlow);
+    }
+  }
+
+  function updateUI(data) {
+    // Detect stage from latest logs
+    const logs = data.logs || [];
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const l = logs[i].toLowerCase();
+      if (l.includes('ingest') || l.includes('transform') || l.includes('trainer') || l.includes('evaluat')) {
+        setStage(l);
+        const stageMap = {
+          ingest: 'Data Ingestion', transform: 'Transformation', trainer: 'Model Training', evaluat: 'Evaluation'
+        };
+        for (const [k, v] of Object.entries(stageMap)) {
+          if (l.includes(k)) { stageText.textContent = v; break; }
+        }
+        break;
+      }
+    }
+
+    // Append new logs
+    for (let i = logIndex; i < logs.length; i++) {
+      appendLog(logs[i]);
+    }
+    logIndex = logs.length;
+
+    if (data.running) {
+      statusDot.className  = 'status-dot status-running';
+      statusText.textContent = 'Training…';
+      progressBar.style.width = '100%'; // indeterminate
+      progressLbl.textContent = 'Running…';
+      liveBadge.classList.remove('hidden');
+      liveBadge.classList.add('flex');
+    }
+
+    if (data.completed && !data.running && !data.error) {
+      statusDot.className  = 'status-dot status-success';
+      statusText.textContent = 'Completed';
+      stageText.textContent  = 'All stages done';
+      progressBar.style.width = '100%';
+      progressLbl.textContent = 'Complete';
+      progressSec.classList.remove('hidden');
+      enableSpinner(false);
+      successSec.classList.remove('hidden');
+      errorSec.classList.add('hidden');
+      liveBadge.classList.add('hidden');
+      liveBadge.classList.remove('flex');
+      startBtn.disabled = false;
+      startBtnTxt.textContent = 'Train Again';
+      resetBtn.classList.remove('hidden');
+      stopDurationTimer();
+      clearInterval(pollInterval);
+      Toast.success('Training completed!', 5000);
+
+      Object.values(stagePills).forEach(p => {
+        p.classList.remove('text-slate-500', 'bg-white/5', 'border-white/8');
+        p.classList.add('text-green-300', 'border-green-500/40', 'bg-green-500/10');
+      });
+    }
+
+    if (data.error && !data.running) {
+      statusDot.className  = 'status-dot status-error';
+      statusText.textContent = 'Error';
+      progressSec.classList.remove('hidden');
+      enableSpinner(false);
+      errorSec.classList.remove('hidden');
+      errorMsg.textContent = data.error;
+      liveBadge.classList.add('hidden');
+      liveBadge.classList.remove('flex');
+      startBtn.disabled = false;
+      startBtnTxt.textContent = 'Retry Training';
+      resetBtn.classList.remove('hidden');
+      stopDurationTimer();
+      clearInterval(pollInterval);
+      Toast.error('Training failed. Check the logs for details.');
+    }
+  }
+
+  async function startTraining() {
+    startBtn.disabled = true;
+    startBtnTxt.textContent = 'Starting…';
+    logIndex = 0;
+    consoleOut.innerHTML = '';
+    successSec.classList.add('hidden');
+    errorSec.classList.add('hidden');
+    progressSec.classList.remove('hidden');
+    enableSpinner(true);
+    progressBar.style.width = '10%';
+    stageText.textContent = 'Initializing';
+    resetBtn.classList.add('hidden');
+
+    try {
+      const res  = await fetch('/train/start', { method: 'POST' });
+      const data = await res.json();
+      if (res.status === 409) {
+        Toast.info('Training is already running.');
+        startBtn.disabled = false;
+        startBtnTxt.textContent = 'Start Training';
+        return;
+      }
+      Toast.info('Training pipeline started!');
+      startDurationTimer();
+      startBtnTxt.textContent = 'Training…';
+
+      pollInterval = setInterval(async () => {
+        try {
+          const r = await fetch('/train/status');
+          const d = await r.json();
+          updateUI(d);
+        } catch { /* network hiccup */ }
+      }, 2000);
+
+    } catch (err) {
+      Toast.error('Could not start training: ' + err.message);
+      startBtn.disabled = false;
+      startBtnTxt.textContent = 'Start Training';
+      enableSpinner(false);
+    }
+  }
+
+  async function resetTraining() {
+    clearInterval(pollInterval);
+    stopDurationTimer();
+    await fetch('/train/reset', { method: 'POST' });
+    statusDot.className   = 'status-dot status-idle';
+    statusText.textContent = 'Idle';
+    stageText.textContent  = '—';
+    durationText.textContent = '—';
+    progressSec.classList.add('hidden');
+    successSec.classList.add('hidden');
+    errorSec.classList.add('hidden');
+    liveBadge.classList.add('hidden');
+    liveBadge.classList.remove('flex');
+    consoleOut.innerHTML = '<span class="log-default">▸ Awaiting training start...</span>';
+    logIndex = 0;
+    progressBar.style.width = '0%';
+    startBtn.disabled = false;
+    startBtnTxt.textContent = 'Start Training';
+    resetBtn.classList.add('hidden');
+    enableSpinner(false);
+
+    Object.values(stagePills).forEach(p => {
+      p.classList.remove('text-purple-300', 'border-purple-500/40', 'bg-purple-500/10',
+                         'text-green-300',  'border-green-500/40',  'bg-green-500/10');
+      p.classList.add('text-slate-500', 'bg-white/5', 'border-white/8');
+    });
+    Toast.info('Training state reset.');
+  }
+
+  // Initial status check
+  (async () => {
+    try {
+      const r = await fetch('/train/status');
+      const d = await r.json();
+      if (d.running) {
+        progressSec.classList.remove('hidden');
+        enableSpinner(true);
+        startBtn.disabled = true;
+        startBtnTxt.textContent = 'Training…';
+        startDurationTimer();
+        pollInterval = setInterval(async () => {
+          try {
+            const res2 = await fetch('/train/status');
+            const d2   = await res2.json();
+            updateUI(d2);
+          } catch { /* ignore */ }
+        }, 2000);
+        updateUI(d);
+      } else if (d.completed) {
+        updateUI(d);
+      } else if (d.error) {
+        updateUI(d);
+      }
+    } catch { /* server not ready */ }
+  })();
+</script>
+</body>
+</html>

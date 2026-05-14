@@ -1,0 +1,685 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  AI Text Summarizer  —  CI/CD Pipeline
+#
+#  Registry : Amazon ECR   (NO Docker Hub)
+#  Deploy   : Amazon ECS   (Fargate)
+#
+#  Jobs (execution order):
+#    code-quality  ──┐
+#    security-scan ──┼──► build-and-push ──► deploy-ecs
+#    test          ──┘
+# ═══════════════════════════════════════════════════════════════════════════
+name: CI/CD Pipeline
+
+# ── Triggers ────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches:
+      - main
+      - master
+      - dev
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
+      - "docs/**"
+      - "research/**"
+
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target deployment environment"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+      skip_tests:
+        description: "Skip test suite (emergency deploys only)"
+        required: false
+        default: "false"
+        type: boolean
+      force_deploy:
+        description: "Deploy even from non-main branch"
+        required: false
+        default: "false"
+        type: boolean
+
+# ── Cancel duplicate runs on the same branch ────────────────────────────────
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ── Global env vars ──────────────────────────────────────────────────────────
+env:
+  PYTHON_VERSION: "3.10"
+  # Suppress pip output noise
+  PIP_DISABLE_PIP_VERSION_CHECK: 1
+  PIP_NO_COLOR: 1
+  # Suppress tokenizer parallelism warnings
+  TOKENIZERS_PARALLELISM: "false"
+
+# ════════════════════════════════════════════════════════════════════════════
+#  JOBS
+# ════════════════════════════════════════════════════════════════════════════
+jobs:
+
+  # ══════════════════════════════════════════════════════════════════════════
+  #  JOB 1 ── Code Quality (flake8 · black · isort)
+  # ══════════════════════════════════════════════════════════════════════════
+  code-quality:
+    name: "🔍 Code Quality"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0      # full history for better diff output
+
+      # ── Python ──────────────────────────────────────────────────────────
+      - name: "🐍 Set up Python ${{ env.PYTHON_VERSION }}"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # ── Cache ───────────────────────────────────────────────────────────
+      - name: "📦 Cache pip (lint tools)"
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: lint-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            lint-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
+            lint-${{ runner.os }}-pip-
+
+      # ── Install lint tools only (fast, no heavy ML deps) ────────────────
+      - name: "⚙️ Install linting tools"
+        run: python -m pip install --upgrade pip flake8 black isort
+
+      # ── flake8 ──────────────────────────────────────────────────────────
+      - name: "🔎 flake8 — PEP 8 + style"
+        run: |
+          flake8 . \
+            --count \
+            --max-line-length=120 \
+            --max-doc-length=150 \
+            --extend-ignore=E203,W503,E501 \
+            --exclude=TSenv,.git,__pycache__,*.egg-info,research,.github \
+            --statistics \
+            --format="%(path)s:%(row)d:%(col)d: %(code)s %(text)s"
+
+      # ── black ───────────────────────────────────────────────────────────
+      - name: "🎨 black — code formatting"
+        run: |
+          black --check --diff --line-length=120 \
+            --exclude '/(TSenv|\.git|__pycache__|research|\.github)/' \
+            .
+
+      # ── isort ───────────────────────────────────────────────────────────
+      - name: "🔤 isort — import ordering"
+        run: |
+          isort --check-only --diff \
+            --line-length=120 \
+            --profile=black \
+            --skip TSenv \
+            --skip research \
+            .
+
+  # ══════════════════════════════════════════════════════════════════════════
+  #  JOB 2 ── Security Scan (bandit · safety)
+  # ══════════════════════════════════════════════════════════════════════════
+  security-scan:
+    name: "🔒 Security Scan"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "🐍 Set up Python ${{ env.PYTHON_VERSION }}"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: "📦 Cache pip (security tools)"
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: sec-${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: sec-${{ runner.os }}-pip-
+
+      - name: "🛡️ Install security tools"
+        run: python -m pip install --upgrade pip "bandit[toml]" safety
+
+      # ── bandit: two-pass approach ────────────────────────────────────────
+      # Pass 1: JSON report for artifact upload (always runs)
+      # Pass 2: Fails the job only on MEDIUM+ severity issues
+      - name: "🔍 bandit — static security analysis"
+        run: |
+          echo "=== Pass 1: Full report (JSON artifact) ==="
+          bandit -r . \
+            --exclude ./TSenv,./tests,./research,./.github \
+            --level LOW \
+            --confidence LOW \
+            --format json \
+            --output bandit-report.json \
+            || true
+
+          echo "=== Pass 2: Fail on MEDIUM+ findings ==="
+          bandit -r . \
+            --exclude ./TSenv,./tests,./research,./.github \
+            --level MEDIUM \
+            --confidence MEDIUM \
+            --format txt
+
+      # ── safety: dependency CVE check ────────────────────────────────────
+      - name: "🔐 safety — dependency CVE check"
+        run: |
+          safety check \
+            -r requirements.txt \
+            --output text \
+            --short-report \
+          || {
+            echo "::warning::Safety found known CVEs in dependencies — review required."
+            exit 1
+          }
+        # Remove `|| { ... exit 1 }` if you want to treat CVEs as warnings only
+
+      # ── Upload bandit report ─────────────────────────────────────────────
+      - name: "📤 Upload bandit report"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: bandit-report.json
+          retention-days: 30
+
+  # ══════════════════════════════════════════════════════════════════════════
+  #  JOB 3 ── Tests (pytest · coverage)
+  # ══════════════════════════════════════════════════════════════════════════
+  test:
+    name: "🧪 Tests (Python ${{ matrix.python-version }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Skip if manual trigger explicitly skips tests
+    if: ${{ github.event.inputs.skip_tests != 'true' }}
+
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
+      fail-fast: false   # run both versions even if one fails
+
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "🐍 Set up Python ${{ matrix.python-version }}"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # ── Two-tier cache: pip packages + installed venv ────────────────────
+      - name: "📦 Cache pip packages"
+        uses: actions/cache@v4
+        id: pip-cache
+        with:
+          path: ~/.cache/pip
+          key: test-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            test-${{ runner.os }}-py${{ matrix.python-version }}-
+            test-${{ runner.os }}-pip-
+
+      - name: "⚙️ Install project + test dependencies"
+        run: |
+          python -m pip install --upgrade pip
+          # Install only the lightweight subset needed for unit tests
+          # (torch/transformers are mocked in tests to avoid ~4 GB download)
+          pip install \
+            fastapi \
+            uvicorn \
+            "starlette[full]" \
+            Jinja2 \
+            PyYAML \
+            python-box \
+            ensure \
+            pytest \
+            pytest-cov \
+            pytest-asyncio \
+            httpx
+          echo "✅ Test dependencies installed"
+
+      # ── Run tests ───────────────────────────────────────────────────────
+      - name: "🧪 Run pytest with coverage"
+        run: |
+          pytest tests/ \
+            --cov=app \
+            --cov=src \
+            --cov-report=xml:coverage-py${{ matrix.python-version }}.xml \
+            --cov-report=term-missing \
+            --cov-fail-under=50 \
+            -v \
+            --tb=short \
+            --color=yes \
+            --strict-markers \
+            -p no:warnings
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      # ── Upload coverage ──────────────────────────────────────────────────
+      - name: "📊 Upload coverage artifact"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-py${{ matrix.python-version }}
+          path: coverage-py${{ matrix.python-version }}.xml
+          retention-days: 14
+
+      - name: "📈 Upload to Codecov"
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage-py${{ matrix.python-version }}.xml
+          flags: python${{ matrix.python-version }}
+          name: "coverage-py${{ matrix.python-version }}"
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}  # optional; required for private repos
+
+  # ══════════════════════════════════════════════════════════════════════════
+  #  JOB 4 ── Build & Push to Amazon ECR
+  # ══════════════════════════════════════════════════════════════════════════
+  build-and-push:
+    name: "🐳 Build & Push to ECR"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Run only after all quality gates pass; never on PRs (no secrets)
+    needs: [code-quality, security-scan, test]
+    if: |
+      always()
+      && github.event_name != 'pull_request'
+      && needs.code-quality.result  == 'success'
+      && needs.security-scan.result == 'success'
+      && (needs.test.result == 'success' || needs.test.result == 'skipped')
+
+    # Expose image info to the deploy job
+    outputs:
+      image-uri:   ${{ steps.meta.outputs.full-uri }}
+      image-tag:   ${{ steps.meta.outputs.image-tag }}
+      short-sha:   ${{ steps.meta.outputs.short-sha }}
+      build-date:  ${{ steps.meta.outputs.build-date }}
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+
+      # ── Compute deterministic image tags ────────────────────────────────
+      - name: "🏷️ Compute image metadata"
+        id: meta
+        run: |
+          SHORT_SHA="${GITHUB_SHA::8}"
+          # Sanitize branch name for use as a Docker tag  (/ → -)
+          BRANCH="${GITHUB_REF_NAME//\//-}"
+          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          # Composite tag: branch-shortsha  e.g.  main-a1b2c3d4
+          IMAGE_TAG="${BRANCH}-${SHORT_SHA}"
+          FULL_URI="${{ secrets.AWS_ECR_REPOSITORY_URI }}:${IMAGE_TAG}"
+
+          echo "short-sha=${SHORT_SHA}"   >> $GITHUB_OUTPUT
+          echo "image-tag=${IMAGE_TAG}"   >> $GITHUB_OUTPUT
+          echo "full-uri=${FULL_URI}"     >> $GITHUB_OUTPUT
+          echo "build-date=${BUILD_DATE}" >> $GITHUB_OUTPUT
+
+          # Write a human-readable summary card
+          {
+            echo "### 🏷️ Image Metadata"
+            echo "| Key | Value |"
+            echo "|-----|-------|"
+            echo "| Registry | \`${{ secrets.AWS_ECR_REPOSITORY_URI }}\` |"
+            echo "| Tag      | \`${IMAGE_TAG}\` |"
+            echo "| Full SHA | \`${GITHUB_SHA}\` |"
+            echo "| Built at | ${BUILD_DATE} |"
+            echo "| Branch   | \`${GITHUB_REF_NAME}\` |"
+            echo "| Actor    | @${{ github.actor }} |"
+          } >> $GITHUB_STEP_SUMMARY
+
+      # ── Docker Buildx (enables layer cache via registry) ────────────────
+      - name: "⚙️ Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v3
+
+      # ── AWS credentials ──────────────────────────────────────────────────
+      - name: "🔑 Configure AWS credentials"
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+          # Mask the account ID in all subsequent log output
+          mask-aws-account-id: true
+
+      # ── ECR login (generates a short-lived token; NO Docker Hub) ────────
+      - name: "🔐 Login to Amazon ECR"
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        # This action uses the AWS credentials above.
+        # It calls GetAuthorizationToken and runs `docker login` automatically.
+        # No Docker Hub credentials are touched.
+
+      # ── Ensure the ECR repository exists (idempotent) ───────────────────
+      - name: "🗂️ Ensure ECR repository exists"
+        run: |
+          echo "Checking ECR repository: ${{ secrets.AWS_ECR_REPOSITORY_NAME }}"
+
+          if aws ecr describe-repositories \
+               --repository-names "${{ secrets.AWS_ECR_REPOSITORY_NAME }}" \
+               --region            "${{ secrets.AWS_REGION }}" \
+               > /dev/null 2>&1; then
+            echo "✅ Repository already exists"
+          else
+            echo "📦 Creating ECR repository..."
+            aws ecr create-repository \
+              --repository-name          "${{ secrets.AWS_ECR_REPOSITORY_NAME }}" \
+              --region                   "${{ secrets.AWS_REGION }}" \
+              --image-scanning-configuration scanOnPush=true \
+              --image-tag-mutability     MUTABLE \
+              --tags \
+                Key=Project,Value=TextSummarizer \
+                Key=ManagedBy,Value=GitHubActions \
+                Key=Environment,Value=${{ inputs.environment || 'production' }}
+            echo "✅ Repository created"
+          fi
+
+      # ── Build and push (Buildx with layer cache stored in ECR) ──────────
+      - name: "🏗️ Build and push Docker image"
+        id: build-push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          # Three tags: branch-sha, full SHA, and latest (only on main/master)
+          tags: |
+            ${{ secrets.AWS_ECR_REPOSITORY_URI }}:${{ steps.meta.outputs.image-tag }}
+            ${{ secrets.AWS_ECR_REPOSITORY_URI }}:${{ github.sha }}
+            ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' && format('{0}:latest', secrets.AWS_ECR_REPOSITORY_URI) || '' }}
+          build-args: |
+            BUILD_DATE=${{ steps.meta.outputs.build-date }}
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.created=${{ steps.meta.outputs.build-date }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.title=AI Text Summarizer
+          # Use ECR as the layer cache backend (avoids separate cache registry)
+          cache-from: type=registry,ref=${{ secrets.AWS_ECR_REPOSITORY_URI }}:buildcache
+          cache-to:   type=registry,ref=${{ secrets.AWS_ECR_REPOSITORY_URI }}:buildcache,mode=max
+          # Disable SBOM/provenance to keep image size predictable on ECR
+          provenance: false
+          sbom:       false
+
+      # ── Verify the image is actually in ECR ─────────────────────────────
+      - name: "✅ Verify image in ECR"
+        run: |
+          IMAGE_DETAIL=$(aws ecr describe-images \
+            --repository-name "${{ secrets.AWS_ECR_REPOSITORY_NAME }}" \
+            --image-ids       imageTag="${{ github.sha }}" \
+            --region          "${{ secrets.AWS_REGION }}" \
+            --query           'imageDetails[0].{digest:imageDigest,pushed:imagePushedAt,sizeBytes:imageSizeInBytes}' \
+            --output          json)
+
+          DIGEST=$(echo "$IMAGE_DETAIL" | python3 -c "import json,sys; print(json.load(sys.stdin)['digest'])")
+          SIZE_MB=$(echo "$IMAGE_DETAIL" | python3 -c "
+          import json,sys
+          d = json.load(sys.stdin)
+          print(round(d['sizeBytes'] / 1_048_576, 1))
+          ")
+
+          echo "✅ Image verified in ECR"
+          echo "   Digest : ${DIGEST}"
+          echo "   Size   : ${SIZE_MB} MB"
+
+      # ── ECR vulnerability scan results ───────────────────────────────────
+      - name: "🔎 Check ECR scan findings"
+        run: |
+          echo "Waiting for ECR scan to complete (up to 60s)..."
+          aws ecr wait image-scan-complete \
+            --repository-name "${{ secrets.AWS_ECR_REPOSITORY_NAME }}" \
+            --image-id        imageTag="${{ github.sha }}" \
+            --region          "${{ secrets.AWS_REGION }}" \
+          || echo "::warning::ECR scan did not complete in time — proceeding anyway"
+
+          FINDINGS=$(aws ecr describe-image-scan-findings \
+            --repository-name "${{ secrets.AWS_ECR_REPOSITORY_NAME }}" \
+            --image-id        imageTag="${{ github.sha }}" \
+            --region          "${{ secrets.AWS_REGION }}" \
+            --query           'imageScanFindings.findingSeverityCounts' \
+            --output          json 2>/dev/null || echo '{}')
+
+          echo "Scan severity counts:"
+          echo "$FINDINGS" | python3 -m json.tool
+
+          # Block deployment on CRITICAL findings
+          CRITICAL=$(echo "$FINDINGS" | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          print(d.get('CRITICAL',0))
+          " 2>/dev/null || echo "0")
+
+          if [ "$CRITICAL" -gt "0" ]; then
+            echo "::error::🚨 $CRITICAL CRITICAL CVE(s) found in container image — deployment blocked"
+            exit 1
+          fi
+          echo "✅ No CRITICAL vulnerabilities found"
+
+      # ── Final step summary ───────────────────────────────────────────────
+      - name: "📝 Build summary"
+        if: always()
+        run: |
+          {
+            echo ""
+            echo "### 🐳 Docker Build Result"
+            echo "| Field  | Value |"
+            echo "|--------|-------|"
+            echo "| Status | ${{ steps.build-push.outcome == 'success' && '✅ Success' || '❌ Failed' }} |"
+            echo "| Digest | \`${{ steps.build-push.outputs.digest }}\` |"
+            echo "| URI    | \`${{ steps.meta.outputs.full-uri }}\` |"
+          } >> $GITHUB_STEP_SUMMARY
+
+  # ══════════════════════════════════════════════════════════════════════════
+  #  JOB 5 ── Deploy to Amazon ECS (Fargate)
+  # ══════════════════════════════════════════════════════════════════════════
+  deploy-ecs:
+    name: "🚀 Deploy to ECS (${{ inputs.environment || 'production' }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build-and-push]
+
+    # Only deploy from main/master; or a forced manual trigger
+    if: |
+      needs.build-and-push.result == 'success'
+      && (
+        github.ref == 'refs/heads/main'
+        || github.ref == 'refs/heads/master'
+        || (github.event_name == 'workflow_dispatch' && github.event.inputs.force_deploy == 'true')
+      )
+
+    # Links the "Environments" tab in GitHub to this job
+    environment:
+      name: ${{ inputs.environment || 'production' }}
+      url:  ${{ steps.verify.outputs.service-url }}
+
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "🔑 Configure AWS credentials"
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+          mask-aws-account-id:   true
+
+      # ── Pull the live task definition from ECS ──────────────────────────
+      - name: "📋 Download current ECS task definition"
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "${{ secrets.ECS_TASK_DEFINITION }}" \
+            --region          "${{ secrets.AWS_REGION }}" \
+            --query           "taskDefinition" \
+            > task-definition.json
+
+          echo "Current task definition:"
+          python3 -c "
+          import json, sys
+          td = json.load(open('task-definition.json'))
+          print(f'  Family   : {td[\"family\"]}')
+          print(f'  Revision : {td[\"revision\"]}')
+          print(f'  CPU      : {td.get(\"cpu\",\"—\")}')
+          print(f'  Memory   : {td.get(\"memory\",\"—\")} MiB')
+          imgs = [c[\"image\"] for c in td.get(\"containerDefinitions\",[])]
+          for i, img in enumerate(imgs):
+            print(f'  Image[{i}] : {img}')
+          "
+
+      # ── Patch the task definition with the new image ─────────────────────
+      - name: "🔄 Render updated task definition (new image)"
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name:  ${{ secrets.ECS_CONTAINER_NAME }}
+          image:           ${{ needs.build-and-push.outputs.image-uri }}
+
+      # ── Register + deploy to ECS service ─────────────────────────────────
+      - name: "🚀 Deploy to ECS service"
+        id: ecs-deploy
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition:            ${{ steps.task-def.outputs.task-definition }}
+          service:                    ${{ secrets.ECS_SERVICE }}
+          cluster:                    ${{ secrets.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          wait-for-minutes:           15
+
+      # ── Post-deploy health check ─────────────────────────────────────────
+      - name: "🔍 Post-deploy verification"
+        id: verify
+        run: |
+          SERVICE=$(aws ecs describe-services \
+            --cluster  "${{ secrets.ECS_CLUSTER }}" \
+            --services "${{ secrets.ECS_SERVICE }}" \
+            --region   "${{ secrets.AWS_REGION }}" \
+            --query    "services[0]" \
+            --output   json)
+
+          STATUS=$(echo "$SERVICE"  | python3 -c "import json,sys; print(json.load(sys.stdin)['status'])")
+          RUNNING=$(echo "$SERVICE" | python3 -c "import json,sys; print(json.load(sys.stdin)['runningCount'])")
+          DESIRED=$(echo "$SERVICE" | python3 -c "import json,sys; print(json.load(sys.stdin)['desiredCount'])")
+          TASK_DEF=$(echo "$SERVICE" | python3 -c "import json,sys; print(json.load(sys.stdin)['taskDefinition'].split('/')[-1])")
+
+          echo "  Service status : ${STATUS}"
+          echo "  Running tasks  : ${RUNNING} / ${DESIRED}"
+          echo "  Task def       : ${TASK_DEF}"
+
+          if [ "$STATUS" = "ACTIVE" ] && [ "$RUNNING" -eq "$DESIRED" ] && [ "$DESIRED" -gt "0" ]; then
+            echo "✅ ECS service is healthy"
+          else
+            echo "::error::❌ ECS service is NOT healthy — ${RUNNING}/${DESIRED} tasks running"
+            exit 1
+          fi
+
+          # NOTE: Replace with your actual Load Balancer DNS or CloudFront URL
+          echo "service-url=https://your-load-balancer.${AWS_REGION}.elb.amazonaws.com" >> $GITHUB_OUTPUT
+
+      # ── Deployment summary ───────────────────────────────────────────────
+      - name: "📝 Deployment summary"
+        if: always()
+        run: |
+          {
+            echo ""
+            echo "### 🚀 Deployment Summary"
+            echo "| Field       | Value |"
+            echo "|-------------|-------|"
+            echo "| Status      | ${{ steps.ecs-deploy.outcome == 'success' && '✅ Deployed' || '❌ Failed' }} |"
+            echo "| Cluster     | \`${{ secrets.ECS_CLUSTER }}\` |"
+            echo "| Service     | \`${{ secrets.ECS_SERVICE }}\` |"
+            echo "| Image       | \`${{ needs.build-and-push.outputs.image-uri }}\` |"
+            echo "| Image SHA   | \`${{ needs.build-and-push.outputs.short-sha }}\` |"
+            echo "| Triggered   | @${{ github.actor }} via \`${{ github.event_name }}\` |"
+            echo "| Deployed at | $(date -u +'%Y-%m-%d %H:%M:%S UTC') |"
+          } >> $GITHUB_STEP_SUMMARY
+
+  # ══════════════════════════════════════════════════════════════════════════
+  #  JOB 6 ── Notifications  (success / failure)
+  # ══════════════════════════════════════════════════════════════════════════
+  notify:
+    name: "📬 Notify"
+    runs-on: ubuntu-latest
+    needs: [code-quality, security-scan, test, build-and-push, deploy-ecs]
+    if: always() && github.event_name != 'pull_request'
+
+    steps:
+      - name: "📬 Compute final pipeline status"
+        id: pipeline-status
+        run: |
+          JOBS='
+          code-quality:  ${{ needs.code-quality.result }}
+          security-scan: ${{ needs.security-scan.result }}
+          test:          ${{ needs.test.result }}
+          build-and-push:${{ needs.build-and-push.result }}
+          deploy-ecs:    ${{ needs.deploy-ecs.result }}
+          '
+
+          echo "$JOBS"
+
+          # Determine overall status
+          if echo "$JOBS" | grep -q "failure\|cancelled"; then
+            echo "status=❌ FAILED"   >> $GITHUB_OUTPUT
+            echo "color=danger"       >> $GITHUB_OUTPUT
+          else
+            echo "status=✅ SUCCESS"  >> $GITHUB_OUTPUT
+            echo "color=good"         >> $GITHUB_OUTPUT
+          fi
+
+      # ── Optional Slack notification ──────────────────────────────────────
+      # Uncomment and add SLACK_WEBHOOK_URL secret to enable
+      # - name: "📩 Slack notification"
+      #   uses: slackapi/slack-github-action@v1.27.0
+      #   with:
+      #     payload: |
+      #       {
+      #         "text": "${{ steps.pipeline-status.outputs.status }} — *AI Text Summarizer* pipeline\nBranch: `${{ github.ref_name }}` | Actor: @${{ github.actor }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
+      #       }
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #     SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+      - name: "📝 Final pipeline summary"
+        run: |
+          {
+            echo ""
+            echo "---"
+            echo "## 🏁 Pipeline Complete"
+            echo ""
+            echo "| Job | Result |"
+            echo "|-----|--------|"
+            echo "| 🔍 Code Quality  | ${{ needs.code-quality.result }}  |"
+            echo "| 🔒 Security Scan | ${{ needs.security-scan.result }} |"
+            echo "| 🧪 Tests         | ${{ needs.test.result }}          |"
+            echo "| 🐳 Build & Push  | ${{ needs.build-and-push.result }}|"
+            echo "| 🚀 Deploy ECS    | ${{ needs.deploy-ecs.result }}    |"
+            echo ""
+            echo "> ${{ steps.pipeline-status.outputs.status }}"
+          } >> $GITHUB_STEP_SUMMARY

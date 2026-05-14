@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Text Summarizer — Summarize Anything Instantly</title>
+  <meta name="description" content="Summarize long articles, blogs, research papers using state-of-the-art AI." />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <style>
+    .hero-title { font-size: clamp(2.8rem, 6vw, 5.5rem); }
+    .section-label {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.12em;
+      text-transform: uppercase; color: #a78bfa;
+      margin-bottom: 1rem;
+    }
+    .section-label::before, .section-label::after {
+      content: ''; flex: 1; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(167,139,250,0.4), transparent);
+      width: 40px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Background ─────────────────────────────────── -->
+<div class="bg-blobs" aria-hidden="true">
+  <div class="blob blob-purple"></div>
+  <div class="blob blob-blue"></div>
+  <div class="blob blob-cyan"></div>
+</div>
+<div class="grid-overlay" aria-hidden="true"></div>
+
+<!-- ── Navbar ─────────────────────────────────────── -->
+<nav class="navbar content">
+  <div class="max-w-7xl mx-auto flex items-center justify-between">
+    <!-- Logo -->
+    <a href="/" class="nav-logo">
+      <div class="logo-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <span class="font-bold text-white text-sm tracking-tight hidden sm:block">AI Text Summarizer</span>
+    </a>
+
+    <!-- Desktop nav -->
+    <div class="hidden md:flex items-center gap-1">
+      <a href="/"        class="nav-link active">Home</a>
+      <a href="/predict" class="nav-link">Summarize</a>
+      <a href="/train"   class="nav-link">Train</a>
+    </div>
+
+    <!-- CTA + Hamburger -->
+    <div class="flex items-center gap-3">
+      <a href="/predict" class="btn-primary hidden sm:inline-flex py-2 px-5 text-sm">
+        Try Now
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+      <button id="menu-toggle" class="md:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition" aria-label="Menu" aria-expanded="false">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile menu -->
+  <div id="mobile-menu" class="mobile-menu md:hidden">
+    <a href="/"        class="mobile-nav-link">Home</a>
+    <a href="/predict" class="mobile-nav-link">Summarize</a>
+    <a href="/train"   class="mobile-nav-link">Train Model</a>
+    <a href="/predict" class="btn-primary mt-3 text-sm py-2.5">Try Now →</a>
+  </div>
+</nav>
+
+<!-- ── Hero ───────────────────────────────────────── -->
+<section class="content min-h-screen flex flex-col items-center justify-center text-center px-4 pt-24 pb-16">
+  <!-- Badge -->
+  <div class="badge anim-target" data-anim="anim-scale-in" data-delay="0">
+    <span class="badge-dot"></span>
+    Powered by Transformer AI
+  </div>
+
+  <!-- Title -->
+  <h1 class="hero-title font-extrabold leading-[1.08] tracking-tight mt-6 mb-5 anim-target" data-anim="anim-fade-up" data-delay="0.12">
+    <span class="gradient-text">AI Text</span>
+    <br />
+    <span class="text-white">Summarizer</span>
+  </h1>
+
+  <!-- Subtitle with typing effect -->
+  <p class="text-slate-400 text-lg sm:text-xl max-w-xl leading-relaxed anim-target" data-anim="anim-fade-up" data-delay="0.22">
+    Summarize long
+    <span id="typing-target" class="text-white font-semibold cursor-blink"></span><br />
+    instantly with state-of-the-art AI — trained on your own data.
+  </p>
+
+  <!-- CTA Buttons -->
+  <div class="flex flex-wrap gap-4 justify-center mt-10 anim-target" data-anim="anim-fade-up" data-delay="0.32">
+    <a href="/predict" class="btn-primary text-base px-7 py-3.5">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+      Try Summarization
+    </a>
+    <a href="/train" class="btn-secondary text-base px-7 py-3.5">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
+      Train Model
+    </a>
+  </div>
+
+  <!-- Scroll arrow -->
+  <div class="mt-16 anim-target" data-anim="anim-fade-in" data-delay="0.7">
+    <a href="#features" class="text-slate-600 hover:text-slate-400 transition-colors flex flex-col items-center gap-2">
+      <span class="text-xs tracking-widest uppercase font-medium">Explore</span>
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:bounce-arrow 2s ease-in-out infinite"><polyline points="6 9 12 15 18 9"></polyline></svg>
+    </a>
+  </div>
+</section>
+
+<!-- ── Stats ──────────────────────────────────────── -->
+<section class="content py-16 px-4">
+  <div class="max-w-5xl mx-auto">
+    <div class="glass-strong gradient-border p-8">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+        <div class="anim-target" data-anim="anim-scale-in" data-delay="0">
+          <div class="stat-number">10×</div>
+          <p class="text-slate-500 text-sm mt-1 font-medium">Faster Reading</p>
+        </div>
+        <div class="anim-target" data-anim="anim-scale-in" data-delay="0.1">
+          <div class="stat-number">95%</div>
+          <p class="text-slate-500 text-sm mt-1 font-medium">Key Info Retained</p>
+        </div>
+        <div class="anim-target" data-anim="anim-scale-in" data-delay="0.2">
+          <div class="stat-number">&lt;2s</div>
+          <p class="text-slate-500 text-sm mt-1 font-medium">Inference Time</p>
+        </div>
+        <div class="anim-target" data-anim="anim-scale-in" data-delay="0.3">
+          <div class="stat-number">∞</div>
+          <p class="text-slate-500 text-sm mt-1 font-medium">Text Types</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Features ───────────────────────────────────── -->
+<section id="features" class="content py-20 px-4">
+  <div class="max-w-6xl mx-auto">
+    <div class="text-center mb-16">
+      <div class="section-label anim-target" data-anim="anim-fade-in">Features</div>
+      <h2 class="text-4xl font-bold text-white anim-target" data-anim="anim-fade-up" data-delay="0.1">
+        Everything you need to<br /><span class="gradient-text">summarize smarter</span>
+      </h2>
+      <p class="text-slate-500 mt-4 max-w-lg mx-auto anim-target" data-anim="anim-fade-up" data-delay="0.2">
+        A complete AI pipeline — from raw text ingestion to fine-tuned summaries.
+      </p>
+    </div>
+
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div class="glass-card p-7 anim-target" data-anim="anim-fade-up" data-delay="0">
+        <div class="feature-icon" style="background:rgba(139,92,246,0.15)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+        </div>
+        <h3 class="font-semibold text-white text-lg mb-2">Lightning Fast</h3>
+        <p class="text-slate-500 text-sm leading-relaxed">Get comprehensive summaries in under 2 seconds. No waiting, no delays.</p>
+      </div>
+
+      <div class="glass-card p-7 anim-target" data-anim="anim-fade-up" data-delay="0.1">
+        <div class="feature-icon" style="background:rgba(59,130,246,0.15)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        </div>
+        <h3 class="font-semibold text-white text-lg mb-2">Transformer AI</h3>
+        <p class="text-slate-500 text-sm leading-relaxed">Fine-tuned transformer model trained specifically for abstractive summarization.</p>
+      </div>
+
+      <div class="glass-card p-7 anim-target" data-anim="anim-fade-up" data-delay="0.2">
+        <div class="feature-icon" style="background:rgba(6,182,212,0.15)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        </div>
+        <h3 class="font-semibold text-white text-lg mb-2">High Accuracy</h3>
+        <p class="text-slate-500 text-sm leading-relaxed">Preserves key insights and main ideas with minimal information loss.</p>
+      </div>
+
+      <div class="glass-card p-7 anim-target" data-anim="anim-fade-up" data-delay="0.3">
+        <div class="feature-icon" style="background:rgba(244,114,182,0.15)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f472b6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+        </div>
+        <h3 class="font-semibold text-white text-lg mb-2">Custom Training</h3>
+        <p class="text-slate-500 text-sm leading-relaxed">Train on your own dataset. Full pipeline: ingestion → transformation → training → evaluation.</p>
+      </div>
+
+      <div class="glass-card p-7 anim-target" data-anim="anim-fade-up" data-delay="0.4">
+        <div class="feature-icon" style="background:rgba(251,191,36,0.12)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        </div>
+        <h3 class="font-semibold text-white text-lg mb-2">Any Content Type</h3>
+        <p class="text-slate-500 text-sm leading-relaxed">Articles, research papers, blogs, documentation, reports — all handled seamlessly.</p>
+      </div>
+
+      <div class="glass-card p-7 anim-target" data-anim="anim-fade-up" data-delay="0.5">
+        <div class="feature-icon" style="background:rgba(34,197,94,0.12)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        </div>
+        <h3 class="font-semibold text-white text-lg mb-2">Export Results</h3>
+        <p class="text-slate-500 text-sm leading-relaxed">Copy to clipboard or download your summaries as .txt files instantly.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── How it works ────────────────────────────────── -->
+<section class="content py-20 px-4">
+  <div class="max-w-4xl mx-auto">
+    <div class="text-center mb-16">
+      <div class="section-label anim-target" data-anim="anim-fade-in">How It Works</div>
+      <h2 class="text-4xl font-bold text-white anim-target" data-anim="anim-fade-up" data-delay="0.1">
+        Three steps to<br /><span class="gradient-text">instant summaries</span>
+      </h2>
+    </div>
+
+    <div class="relative">
+      <div class="hidden md:block absolute top-5 left-[calc(16.6%+1.25rem)] right-[calc(16.6%+1.25rem)] h-px bg-gradient-to-r from-transparent via-purple-500/30 to-transparent"></div>
+
+      <div class="grid md:grid-cols-3 gap-8">
+        <div class="flex flex-col items-center text-center anim-target" data-anim="anim-fade-up" data-delay="0">
+          <div class="step-number mb-5">1</div>
+          <h3 class="font-semibold text-white mb-2">Paste Your Text</h3>
+          <p class="text-slate-500 text-sm leading-relaxed">Drop in any article, paper, or document content into the text input area.</p>
+        </div>
+        <div class="flex flex-col items-center text-center anim-target" data-anim="anim-fade-up" data-delay="0.15">
+          <div class="step-number mb-5">2</div>
+          <h3 class="font-semibold text-white mb-2">Click Summarize</h3>
+          <p class="text-slate-500 text-sm leading-relaxed">Our transformer AI processes your text and generates a concise summary.</p>
+        </div>
+        <div class="flex flex-col items-center text-center anim-target" data-anim="anim-fade-up" data-delay="0.3">
+          <div class="step-number mb-5">3</div>
+          <h3 class="font-semibold text-white mb-2">Get Results</h3>
+          <p class="text-slate-500 text-sm leading-relaxed">Copy or download your summary. Clear, concise, and accurate every time.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA Section ────────────────────────────────── -->
+<section class="content py-20 px-4">
+  <div class="max-w-3xl mx-auto text-center">
+    <div class="glass-strong gradient-border p-12 relative overflow-hidden anim-target" data-anim="anim-scale-in">
+      <div class="absolute inset-0 pointer-events-none" style="background:radial-gradient(ellipse at 50% 0%, rgba(124,58,237,0.12) 0%, transparent 65%)"></div>
+
+      <div class="relative z-10">
+        <h2 class="text-4xl font-bold text-white mb-4">
+          Ready to <span class="gradient-text">summarize</span>?
+        </h2>
+        <p class="text-slate-400 text-lg mb-8 leading-relaxed">
+          Start extracting key insights from your content right now.<br />
+          No setup required — just paste and go.
+        </p>
+        <div class="flex flex-wrap gap-4 justify-center">
+          <a href="/predict" class="btn-primary text-base px-8 py-3.5">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            Start Summarizing
+          </a>
+          <a href="/train" class="btn-secondary text-base px-8 py-3.5">
+            Train Custom Model
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ─────────────────────────────────────── -->
+<footer class="content footer-gradient border-t border-white/5 py-10 px-4 mt-4">
+  <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+    <a href="/" class="nav-logo">
+      <div class="logo-icon w-7 h-7">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <span class="font-semibold text-white text-sm">AI Text Summarizer</span>
+    </a>
+    <div class="flex gap-6">
+      <a href="/"        class="text-slate-600 hover:text-slate-400 text-sm transition-colors">Home</a>
+      <a href="/predict" class="text-slate-600 hover:text-slate-400 text-sm transition-colors">Summarize</a>
+      <a href="/train"   class="text-slate-600 hover:text-slate-400 text-sm transition-colors">Train</a>
+      <a href="/docs"    class="text-slate-600 hover:text-slate-400 text-sm transition-colors">API</a>
+    </div>
+    <p class="text-slate-700 text-xs">Built with FastAPI &amp; Transformers</p>
+  </div>
+</footer>
+
+<!-- ── Toast container ────────────────────────────── -->
+<div id="toast-container"></div>
+
+<!-- ── Scripts ────────────────────────────────────── -->
+<script src="/static/js/app.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    initTypingAnimation('typing-target', [
+      'articles',
+      'research papers',
+      'blog posts',
+      'documentation',
+      'news stories',
+    ]);
+  });
+</script>
+<style>
+  @keyframes bounce-arrow {
+    0%, 100% { transform: translateY(0); }
+    50%       { transform: translateY(7px); }
+  }
+</style>
+</body>
+</html>
